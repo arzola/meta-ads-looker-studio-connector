@@ -62,7 +62,8 @@ function getConfig(request) {
           {value: 'ctr', label: 'Click-Through Rate'},
           {value: 'reach', label: 'Reach'},
           {value: 'frequency', label: 'Frequency'},
-          {value: 'actions', label: 'Actions (Conversions)'}
+          {value: 'actions', label: 'Actions (Conversions)'},
+          {value: 'roas', label: 'ROAS'}
         ]
       },
       {
@@ -292,6 +293,17 @@ function getSchema(request) {
             dataType: 'NUMBER',
             semantics: {
               conceptType: 'METRIC'
+            }
+          });
+          break;
+        case 'roas':
+          fields.push({
+            name: 'roas',
+            label: 'ROAS',
+            dataType: 'NUMBER',
+            semantics: {
+              conceptType: 'METRIC',
+              semanticType: 'PERCENT'
             }
           });
           break;
@@ -587,8 +599,8 @@ function constructApiFields(requestedFields) {
       } else if (field.name === 'actions') {
         fields.push('actions');
         actionFields.push('actions');
-      } else {
-        // Standard fields
+      } else if (field.name !== 'roas') {
+        // Standard fields (excluding ROAS)
         fields.push(field.name);
       }
     }
@@ -682,6 +694,9 @@ function fetchInsights(accountId, dateRange, fields, breakdowns, hasConversionMe
   }
 
   Logger.log('Request URL: ' + urlToFetch);
+
+  // *** ADD DETAILED LOGGING HERE ***
+  Logger.log('Attempting to fetch URL: ' + urlToFetch);
 
   var options = {
     method: 'GET',
@@ -852,6 +867,23 @@ function processResponse(response, requestedFields) {
        }
 
     });
+
+    // *** START ROAS CALCULATION ***
+    var spendIndex = schemaMap['spend'];
+    var convValueIndex = schemaMap['conversion_value_total'];
+    var roasIndex = schemaMap['roas'];
+
+    if (roasIndex !== undefined && spendIndex !== undefined && convValueIndex !== undefined) {
+      var spendValue = row[spendIndex]; // Already processed to float or 0
+      var convValue = row[convValueIndex]; // Already processed to float or 0
+
+      if (spendValue !== null && spendValue !== 0) {
+        row[roasIndex] = convValue / spendValue;
+      } else {
+        row[roasIndex] = 0; // Handle division by zero
+      }
+    }
+    // *** END ROAS CALCULATION ***
 
     return { values: row };
   });
