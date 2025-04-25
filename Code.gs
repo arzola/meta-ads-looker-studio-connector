@@ -41,20 +41,11 @@ function getConfig(request) {
         text: 'This connector allows you to import Meta Ads data into Looker Studio.'
       },
       {
-        type: 'SELECT_SINGLE',
-        name: 'dateRangeType',
-        displayName: 'Date Range',
-        helpText: 'Select the date range for your data',
-        options: CONFIG.DATE_RANGE_TYPES.map(function(range) {
-          return {value: range, label: range};
-        })
-      },
-      {
         type: 'TEXTINPUT',
         name: 'accountId',
-        displayName: 'Ad Account ID',
-        helpText: 'Enter your Meta Ad Account ID (act_XXXXXXXXX)',
-        placeholder: 'act_XXXXXXXXX'
+        displayName: 'Ad Account ID Number',
+        helpText: 'Enter only the numerical part of your Meta Ad Account ID',
+        placeholder: '1234567890'
       },
       {
         type: 'SELECT_MULTIPLE',
@@ -337,6 +328,11 @@ function getData(request) {
         .throwException();
     }
 
+    // Get the numerical account ID from config and prepend 'act_'
+    var accountIdNumber = configParams.accountId.trim();
+    var accountId = 'act_' + accountIdNumber;
+    Logger.log('Using Account ID: ' + accountId); // Log the full ID being used
+
     // Check authentication
     if (!isAuthValid()) {
       cc.newUserError()
@@ -344,8 +340,6 @@ function getData(request) {
         .setDebugText('isAuthValid() returned false.')
         .throwException();
     }
-
-    var accountId = configParams.accountId;
 
     // Set up date range - handle Looker Studio date range if present
     // Pass the request object to getDateRange
@@ -796,7 +790,8 @@ function processResponse(response, requestedFields) {
       var value = null; // Default value
       switch (field.name) {
         case 'date_start':
-          value = item.date_start || ''; // Expect date_start
+          // Format date from YYYY-MM-DD to YYYYMMDD for Looker Studio
+          value = item.date_start ? item.date_start.replace(/-/g, '') : '';
           break;
         case 'campaign_name':
           value = item.campaign_name || '';
@@ -981,19 +976,20 @@ function validateConfig(request) {
   var configParams = request.configParams || {}; // Ensure configParams exists
   var errors = [];
 
+  // Validate Account ID (now expecting only numbers)
   if (!configParams.accountId || configParams.accountId.trim() === '') {
     errors.push({
-      errorCode: 'MISSING_ACCOUNT_ID', // Use errorCode for potential specific handling
-      message: "Ad Account ID is required."
+      errorCode: 'MISSING_ACCOUNT_ID',
+      message: "Ad Account ID number is required."
     });
-  } else if (!/^act_\d+$/.test(configParams.accountId.trim())) {
+  } else if (!/^[0-9]+$/.test(configParams.accountId.trim())) { // Check if it's only digits
      errors.push({
          errorCode: 'INVALID_ACCOUNT_ID_FORMAT',
-         message: "Ad Account ID must be in the format 'act_XXXXXXXXX'."
+         message: "Ad Account ID must contain only numbers."
      });
   }
 
-
+  // Validate Metrics
   if (!configParams.metrics || configParams.metrics.split(',').length === 0) {
     errors.push({
       errorCode: 'MISSING_METRICS',
