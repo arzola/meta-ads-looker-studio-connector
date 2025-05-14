@@ -17,11 +17,9 @@ var cc = DataStudioApp.createCommunityConnector();
 function getAuthType() {
   var AuthTypes = cc.AuthType;
   Logger.log('getAuthType');
-  // USER_TOKEN works with the OAuth2 library as it stores the token in user properties.
-  // However, OAUTH2 is often considered more conventional for this type of flow.
   return cc
     .newAuthTypeResponse()
-    .setAuthType(AuthTypes.USER_TOKEN)
+    .setAuthType(AuthTypes.OAUTH2)
     .build();
 }
 
@@ -676,7 +674,7 @@ function fetchInsights(accountId, dateRange, fields, breakdowns, hasConversionMe
       until: dateRange.until
     });
     params.fields = fields.regular;
-    params.level = 'ad'; // Consider making level configurable if needed (campaign, adset)
+    params.level = 'campaign'; // Changed from 'ad' to 'campaign'
     params.time_increment = 1; // Daily data
     params.limit = 100; // Request a reasonable limit per page
 
@@ -798,92 +796,81 @@ function processResponse(response, requestedFields) {
     schemaMap[field.name] = index;
   });
 
-  return response.data.map(function(item) {
-    var row = new Array(requestedFields.schema.length).fill(null); // Initialize row array
+  // Create a map to store aggregated data by campaign and date
+  var aggregatedData = {};
+
+  response.data.forEach(function(item) {
+    var key = item.date_start + '_' + (item.campaign_name || '');
+    
+    if (!aggregatedData[key]) {
+      aggregatedData[key] = {
+        date_start: item.date_start,
+        campaign_name: item.campaign_name || '',
+        spend: 0,
+        impressions: 0,
+        clicks: 0,
+        conversion_value_total: 0,
+        actions: 0
+      };
+    }
+
+    // Aggregate metrics
+    aggregatedData[key].spend += parseFloat(item.spend) || 0;
+    aggregatedData[key].impressions += parseFloat(item.impressions) || 0;
+    aggregatedData[key].clicks += parseFloat(item.clicks) || 0;
+    aggregatedData[key].conversion_value_total += extractActionValue(item.action_values, 'purchase');
+    aggregatedData[key].actions += extractActionCount(item.actions, 'purchase');
+  });
+
+  // Convert aggregated data to rows
+  return Object.values(aggregatedData).map(function(item) {
+    var row = new Array(requestedFields.schema.length).fill(null);
 
     requestedFields.schema.forEach(function(field) {
-      var value = null; // Default value
+      var value = null;
       switch (field.name) {
         case 'date_start':
-          // Format date from YYYY-MM-DD to YYYYMMDD for Looker Studio
           value = item.date_start ? item.date_start.replace(/-/g, '') : '';
           break;
         case 'campaign_name':
           value = item.campaign_name || '';
           break;
-        case 'adset_name':
-          value = item.adset_name || '';
-          break;
-        case 'ad_name':
-          value = item.ad_name || '';
-          break;
         case 'conversion_value_total':
-          // Extract purchase value from action_values
-          // Assumes action_breakdowns='action_type' was used
-          value = extractActionValue(item.action_values, 'purchase');
+          value = item.conversion_value_total;
           break;
         case 'actions':
-          // Extract purchase actions count
-          // Assumes action_breakdowns='action_type' was used
-          value = extractActionCount(item.actions, 'purchase'); // Note: Hardcoded 'purchase'
+          value = item.actions;
           break;
-        case 'age':
-          value = item.age || '';
-          break;
-        case 'gender':
-          value = item.gender || '';
-          break;
-        case 'country':
-          value = item.country || '';
-          break;
-        case 'device_platform':
-          value = item.device_platform || '';
-          break;
-        // Handle standard metrics and potentially other dimensions directly
         case 'spend':
         case 'impressions':
         case 'clicks':
+          value = item[field.name];
+          break;
         case 'cpc':
+          value = item.clicks > 0 ? item.spend / item.clicks : 0;
+          break;
         case 'cpm':
+          value = item.impressions > 0 ? (item.spend / item.impressions) * 1000 : 0;
+          break;
         case 'ctr':
-        case 'reach':
-        case 'frequency':
-           // Use parseFloat for metrics, default to 0 if null/undefined
-           value = parseFloat(item[field.name]) || 0;
-           break;
+          value = item.impressions > 0 ? (item.clicks / item.impressions) * 100 : 0;
+          break;
+        case 'roas':
+          value = item.spend > 0 ? item.conversion_value_total / item.spend : 0;
+          break;
         default:
-          // Fallback for any other fields requested but not explicitly handled
-          // Use empty string for potentially missing dimensions, 0 for metrics if unsure
           if (field.semantics && field.semantics.conceptType === 'METRIC') {
             value = parseFloat(item[field.name]) || 0;
           } else {
-            value = item[field.name] || ''; // Default to empty string for dimensions/others
+            value = item[field.name] || '';
           }
           break;
       }
-      // Place the value in the correct position based on schemaMap
+      
       if (schemaMap[field.name] !== undefined) {
-           row[schemaMap[field.name]] = value;
-       }
-
-    });
-
-    // *** START ROAS CALCULATION ***
-    var spendIndex = schemaMap['spend'];
-    var convValueIndex = schemaMap['conversion_value_total'];
-    var roasIndex = schemaMap['roas'];
-
-    if (roasIndex !== undefined && spendIndex !== undefined && convValueIndex !== undefined) {
-      var spendValue = row[spendIndex]; // Already processed to float or 0
-      var convValue = row[convValueIndex]; // Already processed to float or 0
-
-      if (spendValue !== null && spendValue !== 0) {
-        row[roasIndex] = convValue / spendValue;
-      } else {
-        row[roasIndex] = 0; // Handle division by zero
+        row[schemaMap[field.name]] = value;
       }
-    }
-    // *** END ROAS CALCULATION ***
+    });
 
     return { values: row };
   });
