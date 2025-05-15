@@ -60,8 +60,7 @@ function getConfig(request) {
           {value: 'ctr', label: 'Click-Through Rate'},
           {value: 'reach', label: 'Reach'},
           {value: 'frequency', label: 'Frequency'},
-          {value: 'actions', label: 'Actions (Conversions)'},
-          {value: 'roas', label: 'ROAS'}
+          {value: 'actions', label: 'Actions (Conversions)'}
         ]
       },
       {
@@ -195,8 +194,7 @@ function getSchema(request) {
             label: 'Spend (Cost)',
             dataType: 'NUMBER',
             semantics: {
-              conceptType: 'METRIC',
-              semanticType: 'CURRENCY_USD'
+              conceptType: 'METRIC'
             }
           });
           break;
@@ -206,8 +204,7 @@ function getSchema(request) {
             label: 'Total Conversion Value',
             dataType: 'NUMBER',
             semantics: {
-              conceptType: 'METRIC',
-              semanticType: 'CURRENCY_USD'
+              conceptType: 'METRIC'
             }
           });
           break;
@@ -237,8 +234,7 @@ function getSchema(request) {
             label: 'Cost per Click',
             dataType: 'NUMBER',
             semantics: {
-              conceptType: 'METRIC',
-              semanticType: 'CURRENCY_USD'
+              conceptType: 'METRIC'
             }
           });
           break;
@@ -248,8 +244,7 @@ function getSchema(request) {
             label: 'Cost per 1,000 Impressions',
             dataType: 'NUMBER',
             semantics: {
-              conceptType: 'METRIC',
-              semanticType: 'CURRENCY_USD'
+              conceptType: 'METRIC'
             }
           });
           break;
@@ -291,17 +286,6 @@ function getSchema(request) {
             dataType: 'NUMBER',
             semantics: {
               conceptType: 'METRIC'
-            }
-          });
-          break;
-        case 'roas':
-          fields.push({
-            name: 'roas',
-            label: 'ROAS',
-            dataType: 'NUMBER',
-            semantics: {
-              conceptType: 'METRIC',
-              semanticType: 'PERCENT'
             }
           });
           break;
@@ -452,7 +436,7 @@ function getData(request) {
 
     // Process and format the response
     Logger.log('Processing ' + allData.length + ' rows from API response');
-    var rows = processResponse({ data: allData }, requestedFields); // Pass the combined data
+    var rows = processResponse({ data: allData }, requestedFields); // Pass the combined data and the dateRange used for fetching
     Logger.log('Processed ' + rows.length + ' rows for Looker Studio');
 
     return {
@@ -514,8 +498,10 @@ function getRequestedFields(request) {
  * @param {object} request The getData request object containing potential dateRange
  * @return {object} The date range with start and end dates
  */
-function getDateRange(dateRangeType, request) { // Accept request object
-  // Handle DataStudio date range if present
+function getDateRange(dateRangeType, request) { // dateRangeType is configParams.dateRangeType
+  Logger.log('getDateRange called. Date range type from config: ' + dateRangeType + '. LS request.dateRange: ' + JSON.stringify(request.dateRange));
+
+  // Priority 1: Use date range from Looker Studio request if complete
   if (request && request.dateRange && request.dateRange.startDate && request.dateRange.endDate) {
     Logger.log('Using date range from Looker Studio request.');
     return {
@@ -524,16 +510,22 @@ function getDateRange(dateRangeType, request) { // Accept request object
     };
   }
 
-  // Fallback to the predefined ranges from config if no Looker Studio range
-  Logger.log('Using predefined date range type: ' + dateRangeType);
+  Logger.log('Looker Studio date range not used or incomplete. Processing config dateRangeType: ' + dateRangeType);
   var today = new Date();
   var startDate, endDate;
 
-  // Set default endDate to yesterday for most ranges
+  // Default endDate to yesterday
   endDate = new Date(today);
   endDate.setDate(today.getDate() - 1);
 
-  switch(dateRangeType) {
+  // If dateRangeType from config is undefined/null/empty, default it to 'LAST_30_DAYS' for fallback logic.
+  var effectiveDateRangeType = dateRangeType;
+  if (effectiveDateRangeType === undefined || effectiveDateRangeType === null || String(effectiveDateRangeType).trim() === '') {
+      Logger.log('Config dateRangeType is not set, defaulting to LAST_30_DAYS for fallback logic.');
+      effectiveDateRangeType = 'LAST_30_DAYS';
+  }
+
+  switch (effectiveDateRangeType) {
     case 'LAST_30_DAYS':
       startDate = new Date(today);
       startDate.setDate(today.getDate() - 30);
@@ -546,13 +538,13 @@ function getDateRange(dateRangeType, request) { // Accept request object
       startDate = new Date(today);
       startDate.setDate(today.getDate() - 1);
       break;
-    case 'CUSTOM': // This case is now only relevant if Looker Studio *doesn't* provide a range
-      Logger.log('Warning: CUSTOM range selected but no date range provided by Looker Studio. Defaulting to LAST_30_DAYS.');
+    case 'CUSTOM':
+      Logger.log('Warning: Config dateRangeType is CUSTOM, but no date range provided by Looker Studio. Defaulting to LAST_30_DAYS.');
       startDate = new Date(today);
-      startDate.setDate(today.getDate() - 30); // Default to last 30 days if LS provides nothing
+      startDate.setDate(today.getDate() - 30);
       break;
-    default: // Default to LAST_30_DAYS if type is unknown or null
-      Logger.log('Warning: Unknown date range type. Defaulting to LAST_30_DAYS.');
+    default: // This handles genuinely unknown/invalid dateRangeType values from config
+      Logger.log('Warning: Unknown date range type configured: "' + effectiveDateRangeType + '". Defaulting to LAST_30_DAYS.');
       startDate = new Date(today);
       startDate.setDate(today.getDate() - 30);
       break;
@@ -560,10 +552,11 @@ function getDateRange(dateRangeType, request) { // Accept request object
 
   // Ensure start date is not after end date
   if (startDate > endDate) {
-      startDate = new Date(endDate); // Set start date to end date if invalid range calculated
+      startDate = new Date(endDate); 
       Logger.log('Adjusted start date to match end date as initial calculation was invalid.');
   }
 
+  Logger.log('Fallback date range determined: since ' + formatDate(startDate) + ', until ' + formatDate(endDate));
   return {
     since: formatDate(startDate),
     until: formatDate(endDate)
@@ -781,12 +774,12 @@ function parseJsonSafely(jsonString) {
 
 /**
  * Processes the API response and formats it for Looker Studio.
- * @param {object} response The API response
- * @param {object} requestedFields The requested fields
- * @return {Array} The formatted rows
+ * Each item in response.data is expected to be a daily record.
+ * @param {object} response The API response containing { data: allData }
+ * @param {object} requestedFields The requested fields schema
+ * @return {Array} The formatted rows for Looker Studio
  */
-function processResponse(response, requestedFields) {
-  // response now contains { data: allData }
+function processResponse(response, requestedFields) { 
   if (!response || !response.data || response.data.length === 0) {
     return [];
   }
@@ -796,80 +789,90 @@ function processResponse(response, requestedFields) {
     schemaMap[field.name] = index;
   });
 
-  // Create a map to store aggregated data by campaign and date
-  var aggregatedData = {};
-
-  response.data.forEach(function(item) {
-    var key = item.date_start + '_' + (item.campaign_name || '');
-    
-    if (!aggregatedData[key]) {
-      aggregatedData[key] = {
-        date_start: item.date_start,
-        campaign_name: item.campaign_name || '',
-        spend: 0,
-        impressions: 0,
-        clicks: 0,
-        conversion_value_total: 0,
-        actions: 0
-      };
-    }
-
-    // Aggregate metrics
-    aggregatedData[key].spend += parseFloat(item.spend) || 0;
-    aggregatedData[key].impressions += parseFloat(item.impressions) || 0;
-    aggregatedData[key].clicks += parseFloat(item.clicks) || 0;
-    aggregatedData[key].conversion_value_total += extractActionValue(item.action_values, 'purchase');
-    aggregatedData[key].actions += extractActionCount(item.actions, 'purchase');
-  });
-
-  // Convert aggregated data to rows
-  return Object.values(aggregatedData).map(function(item) {
+  return response.data.map(function(item) { // item is a daily record from Meta API
     var row = new Array(requestedFields.schema.length).fill(null);
 
     requestedFields.schema.forEach(function(field) {
       var value = null;
+      if (schemaMap[field.name] === undefined) return; // Should not happen if schema is well-formed
+
       switch (field.name) {
         case 'date_start':
           value = item.date_start ? item.date_start.replace(/-/g, '') : '';
           break;
+        
+        // Direct dimensions from API item
         case 'campaign_name':
           value = item.campaign_name || '';
           break;
-        case 'conversion_value_total':
-          value = item.conversion_value_total;
+        case 'adset_name': // Assuming adset_name might be in item if level='adset' or 'ad' was used
+          value = item.adset_name || '';
           break;
-        case 'actions':
-          value = item.actions;
+        case 'ad_name':    // Assuming ad_name might be in item if level='ad' was used
+          value = item.ad_name || ''; 
           break;
+        case 'age':
+          value = item.age || '';
+          break;
+        case 'gender':
+          value = item.gender || '';
+          break;
+        case 'country':
+          value = item.country || '';
+          break;
+        case 'device_platform':
+          value = item.device_platform || '';
+          break;
+
+        // Base metrics from API item
         case 'spend':
         case 'impressions':
         case 'clicks':
-          value = item[field.name];
+        case 'reach':
+          value = parseFloat(item[field.name]) || 0;
           break;
+
+        // Conversion metrics specific to this item (daily record)
+        case 'conversion_value_total':
+          value = extractPurchaseConversionValue(item.action_values);
+          break;
+        case 'actions':
+          value = extractPurchaseActionCount(item.actions);
+          break;
+
+        // Calculated metrics for this item (daily record)
         case 'cpc':
-          value = item.clicks > 0 ? item.spend / item.clicks : 0;
+          var clicks_cpc = parseFloat(item.clicks) || 0;
+          var spend_cpc = parseFloat(item.spend) || 0;
+          value = clicks_cpc > 0 ? spend_cpc / clicks_cpc : 0;
           break;
         case 'cpm':
-          value = item.impressions > 0 ? (item.spend / item.impressions) * 1000 : 0;
+          var impressions_cpm = parseFloat(item.impressions) || 0;
+          var spend_cpm = parseFloat(item.spend) || 0;
+          value = impressions_cpm > 0 ? (spend_cpm / impressions_cpm) * 1000 : 0;
           break;
         case 'ctr':
-          value = item.impressions > 0 ? (item.clicks / item.impressions) * 100 : 0;
+          var impressions_ctr = parseFloat(item.impressions) || 0;
+          var clicks_ctr = parseFloat(item.clicks) || 0;
+          value = impressions_ctr > 0 ? (clicks_ctr / impressions_ctr) * 100 : 0;
           break;
-        case 'roas':
-          value = item.spend > 0 ? item.conversion_value_total / item.spend : 0;
+        case 'frequency':
+          var impressions_freq = parseFloat(item.impressions) || 0;
+          var reach_freq = parseFloat(item.reach) || 0;
+          value = reach_freq > 0 ? impressions_freq / reach_freq : 0;
           break;
+        
         default:
-          if (field.semantics && field.semantics.conceptType === 'METRIC') {
+          // Fallback for any other metric not explicitly handled above but present in item
+          if (item.hasOwnProperty(field.name) && field.semantics && field.semantics.conceptType === 'METRIC') {
             value = parseFloat(item[field.name]) || 0;
-          } else {
+          } else if (item.hasOwnProperty(field.name)) { // Other potential dimension
             value = item[field.name] || '';
           }
           break;
       }
       
-      if (schemaMap[field.name] !== undefined) {
-        row[schemaMap[field.name]] = value;
-      }
+      row[schemaMap[field.name]] = value;
     });
 
     return { values: row };
@@ -877,35 +880,37 @@ function processResponse(response, requestedFields) {
 }
 
 /**
- * Extracts action value for a specific action type.
- * @param {Array} actionValues Array of action values
- * @param {string} actionType The action type to extract
- * @return {number} The extracted value or 0
+ * Extracts the total value for "purchase" conversions from an array of action objects.
+ * Sums the 'value' property of objects where action_type is 'purchase'.
+ * @param {Array<object>} actionValues Array of action objects (e.g., from action_values field).
+ * @return {number} The total summed value for purchase conversions.
  */
-function extractActionValue(actionValues, actionType) {
+function extractPurchaseConversionValue(actionValues) {
   if (!actionValues || !Array.isArray(actionValues)) return 0;
-  
-  var matchingAction = actionValues.find(function(action) {
-    return action.action_type === actionType;
+  var totalPurchaseValue = 0;
+  actionValues.forEach(function(action) {
+    if (action.action_type === 'purchase') { // Specifically look for 'purchase'
+      totalPurchaseValue += parseFloat(action.value) || 0;
+    }
   });
-  
-  return matchingAction ? parseFloat(matchingAction.value) : 0;
+  return totalPurchaseValue;
 }
 
 /**
- * Extracts action count for a specific action type.
- * @param {Array} actions Array of actions
- * @param {string} actionType The action type to extract
- * @return {number} The extracted count or 0
+ * Extracts the total count for "purchase" actions from an array of action objects.
+ * Sums the 'value' property (count) of objects where action_type is 'purchase'.
+ * @param {Array<object>} actionsList Array of action objects (e.g., from actions field).
+ * @return {number} The total summed count for purchase actions.
  */
-function extractActionCount(actions, actionType) {
-  if (!actions || !Array.isArray(actions)) return 0;
-  
-  var matchingAction = actions.find(function(action) {
-    return action.action_type === actionType;
+function extractPurchaseActionCount(actionsList) {
+  if (!actionsList || !Array.isArray(actionsList)) return 0;
+  var totalPurchaseCount = 0;
+  actionsList.forEach(function(action) {
+    if (action.action_type === 'purchase') { // Specifically look for 'purchase'
+      totalPurchaseCount += parseInt(action.value) || 0;
+    }
   });
-  
-  return matchingAction ? parseInt(matchingAction.value) : 0;
+  return totalPurchaseCount;
 }
 
 /**
