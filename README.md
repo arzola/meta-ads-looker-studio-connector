@@ -1,21 +1,24 @@
 # Looker Studio Connector for Meta Ads
 
-This Google Apps Script project provides a community connector for Google Looker Studio (formerly Data Studio) to fetch data directly from the Meta (Facebook) Ads Marketing API.
+This Google Apps Script project provides a community connector for Google Looker Studio (formerly Data Studio) to fetch core performance data directly from the Meta (Facebook) Ads Marketing API.
 
 ## Overview
 
 This connector allows you to:
 
 *   Connect Looker Studio to your Meta Ad Account(s).
-*   Select specific metrics and dimensions from your ad campaigns.
-*   Define date ranges for the data you want to analyze.
+*   Automatically fetch key metrics: `Spend (Cost)` and `Total Conversion Value (for purchases)`.
+*   Automatically fetch key dimensions: `Date` and `Campaign Name`.
+*   Define date ranges for the data you want to analyze within Looker Studio.
 *   Visualize your Meta Ads performance data within Looker Studio dashboards.
+
+The connector is designed for simplicity, providing a fixed set of essential fields. More complex metrics (like ROAS, CPC, CTR) should be calculated directly within Looker Studio using the base fields provided by this connector.
 
 ## Prerequisites
 
 1.  **Google Account:** To use Google Apps Script and Looker Studio.
 2.  **Meta Developer Account:** To create a Meta App and get API credentials.
-3.  **Meta Ad Account:** Access to the Ad Account ID(s) you want to pull data from (`act_XXXXXXXXX`).
+3.  **Meta Ad Account:** Access to the Ad Account ID(s) you want to pull data from (you'll input the numerical part).
 4.  **Permissions:** Sufficient permissions within the Meta Ad Account to read insights (`ads_read`, `read_insights`).
 
 ## Setup Instructions
@@ -64,7 +67,7 @@ Follow these steps to set up and deploy the connector:
 *   In the Apps Script editor, click "Deploy" > "New deployment".
 *   Select type: "Web app".
 *   Configure the deployment:
-    *   **Description:** (Optional) e.g., "Meta Ads Connector V1"
+    *   **Description:** (Optional) e.g., "Meta Ads Connector V2 (Simplified)"
     *   **Execute as:** "Me"
     *   **Who has access:** "Anyone with Google account" (or restrict if necessary, but this usually works best for Looker Studio).
 *   Click "Deploy".
@@ -77,24 +80,32 @@ Follow these steps to set up and deploy the connector:
 
 *   Go to Looker Studio: [https://lookerstudio.google.com/](https://lookerstudio.google.com/)
 *   Create a new "Data Source".
-*   Search for "Build Your Own" connector or look under the "Partner Connectors" section. If you can't find it easily, you can often directly paste the Deployment ID.
-*   Alternatively, go to the connector gallery ([https://lookerstudio.google.com/connector/gallery](https://lookerstudio.google.com/connector/gallery)) and look for deployment options, or add a data source directly from a report.
+*   Search for "Build Your Own" connector or look under the "Partner Connectors" section.
 *   When prompted for a Deployment ID, paste the **Deployment ID** you copied during the Apps Script deployment step.
 *   Click "Validate".
 *   **Authorize:** You will likely be prompted to authorize both the connector script and access to your Meta account via the OAuth flow you configured. Follow the prompts.
 
 **2. Configuration:**
 
-*   Once authorized, you will see the configuration options defined in `getConfig`:
-    *   **Date Range:** Select a default date range (e.g., Last 30 Days, Yesterday). Note that this can usually be overridden by the date range control in your Looker Studio report.
-    *   **Ad Account ID:** Enter your Meta Ad Account ID, prefixed with `act_` (e.g., `act_1234567890`). **This is required.**
-    *   **Metrics:** Select the metrics you want to import (e.g., Spend, Impressions, Clicks, Conversion Value). **At least one metric is required.**
-    *   **Dimensions:** Select the dimensions you want to break down your data by (e.g., Campaign Name, Ad Set Name, Ad Name, Age, Gender, Country, Device Platform). Date is always included.
+*   Once authorized, you will see a simplified configuration:
+    *   **Ad Account ID Number:** Enter *only the numerical part* of your Meta Ad Account ID (e.g., `1234567890`). **This is required.**
 *   Click "Connect" in the top right corner.
 
-**3. Create Your Report:**
+**3. Available Fields & Creating Your Report:**
 
-*   You can now use this data source in your Looker Studio reports. Drag and drop the available fields (dimensions and metrics) onto charts and tables.
+*   The connector automatically provides the following fields:
+    *   **Dimensions:**
+        *   `Date` (date_start)
+        *   `Campaign Name` (campaign_name)
+    *   **Metrics:**
+        *   `Spend (Cost)` (spend)
+        *   `Total Conversion Value` (conversion_value_total - based on "purchase" actions)
+*   You can now use this data source in your Looker Studio reports.
+*   **Important for ROAS and other ratio metrics:**
+    *   To calculate ROAS (Return on Ad Spend), create a calculated field in Looker Studio:
+        *   Formula: `SUM(Total Conversion Value) / SUM(Spend (Cost))`
+        *   Type: Number (e.g., 2.5) or Percent (e.g., 250%)
+    *   Similarly, calculate other metrics like CPC, CPM, CTR using the base fields provided if needed.
 
 ## Authentication
 
@@ -104,10 +115,9 @@ Follow these steps to set up and deploy the connector:
 
 ## Limitations & Known Issues
 
-*   **API Quotas:** Be mindful of Meta Marketing API rate limits. Fetching large amounts of data or using many connectors might hit these limits.
+*   **API Quotas:** Be mindful of Meta Marketing API rate limits.
 *   **Pagination Limit:** The script currently fetches a maximum of 100 pages of data from the API to prevent timeouts. If your query returns more data, it might be incomplete.
-*   **Conflicting Breakdowns:** Due to Meta API limitations, you cannot request conversion-related metrics (`Total Conversion Value`, `Actions`) *and* certain breakdowns (`Age`, `Gender`, `Country`, `Device Platform`) in the same query. The connector includes validation to prevent this, but be aware of this restriction when selecting fields.
-*   **Action Breakdowns:** The connector currently hardcodes `action_breakdowns=action_type` and extracts values specifically for the `purchase` action type when requesting `Total Conversion Value` or `Actions`. If you need other action types, the `processResponse` function in `Code.gs` needs modification.
+*   **Action Specificity:** `Total Conversion Value` and `Actions` metrics are based specifically on "purchase" action types reported by the API.
 *   **Data Freshness:** Data is fetched when Looker Studio requests it. Configure data freshness settings in your Looker Studio data source.
 
 ## Troubleshooting
@@ -116,7 +126,6 @@ Follow these steps to set up and deploy the connector:
 *   **Missing Data / Errors in Report:**
     *   Check the Apps Script project logs ("Executions" in the left sidebar) for detailed error messages from the script or the Meta API.
     *   Verify the Ad Account ID is correct and you have `ads_read`/`read_insights` permissions.
-    *   Ensure you haven't selected conflicting metrics and breakdowns (see Limitations).
-    *   Test with a smaller date range or fewer metrics/dimensions.
-*   **`Configuration Error: ...`:** Check the `validateConfig` function logic and ensure you've provided all required fields (Account ID, at least one Metric) in the Looker Studio connector configuration.
-*   **`Meta API Error: ...`:** These errors come directly from Facebook. Check the Meta Marketing API documentation or status pages for information related to the error code or message. It could be permissions, invalid field combinations, or temporary API issues. 
+    *   Test with a smaller date range in Looker Studio.
+*   **`Configuration Error: ...`:** Check the `validateConfig` function logic. The primary validation is for a correctly formatted numerical "Ad Account ID".
+*   **`Meta API Error: ...`:** These errors come directly from Facebook. Check the Meta Marketing API documentation or status pages for information related to the error code or message. It could be permissions, an invalid account ID, or temporary API issues. 
