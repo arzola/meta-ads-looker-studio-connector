@@ -36,7 +36,7 @@ function getConfig(request) {
       {
         type: 'INFO',
         name: 'connect',
-        text: 'This connector allows you to import Meta Ads data into Looker Studio.'
+        text: 'This connector allows you to import Meta Ads data for Spend, Total Conversion Value, and Campaign Name into Looker Studio. Enter your Ad Account ID below.'
       },
       {
         type: 'TEXTINPUT',
@@ -44,35 +44,6 @@ function getConfig(request) {
         displayName: 'Ad Account ID Number',
         helpText: 'Enter only the numerical part of your Meta Ad Account ID',
         placeholder: '1234567890'
-      },
-      {
-        type: 'SELECT_MULTIPLE',
-        name: 'metrics',
-        displayName: 'Metrics',
-        helpText: 'Select the metrics you want to include',
-        options: [
-          {value: 'spend', label: 'Spend (Cost)'},
-          {value: 'impressions', label: 'Impressions'},
-          {value: 'clicks', label: 'Clicks'},
-          {value: 'conversion_value_total', label: 'Total Conversion Value'},
-          {value: 'cpc', label: 'Cost per Click'},
-          {value: 'cpm', label: 'Cost per 1,000 Impressions'},
-          {value: 'ctr', label: 'Click-Through Rate'},
-          {value: 'reach', label: 'Reach'},
-          {value: 'frequency', label: 'Frequency'},
-          {value: 'actions', label: 'Actions (Conversions)'}
-        ]
-      },
-      {
-        type: 'SELECT_MULTIPLE',
-        name: 'dimensions',
-        displayName: 'Dimensions',
-        helpText: 'Select the dimensions to break down your data',
-        options: [
-          {value: 'campaign_name', label: 'Campaign Name'},
-          {value: 'adset_name', label: 'Ad Set Name'},
-          {value: 'ad_name', label: 'Ad Name'}
-        ]
       }
     ]
   };
@@ -85,10 +56,10 @@ function getConfig(request) {
  */
 function getSchema(request) {
   var fields = [];
-  var configParams = request.configParams;
+  // var configParams = request.configParams; // No longer needed for schema definition
 
-  Logger.log('getSchema');
-  Logger.log(JSON.stringify(request.configParams));
+  Logger.log('getSchema called - returning fixed schema');
+  // Logger.log(JSON.stringify(request.configParams)); // configParams not used here anymore
   
   // Always include date dimension
   fields.push({
@@ -101,199 +72,39 @@ function getSchema(request) {
     }
   });
   
-  // Add selected dimensions
-  if (configParams.dimensions) {
-    var dimensions = configParams.dimensions.split(',');
-    
-    dimensions.forEach(function(dimension) {
-      switch(dimension) {
-        case 'campaign_name':
-          fields.push({
-            name: 'campaign_name',
-            label: 'Campaign Name',
-            dataType: 'STRING',
-            semantics: {
-              conceptType: 'DIMENSION'
-            }
-          });
-          break;
-        case 'adset_name':
-          fields.push({
-            name: 'adset_name',
-            label: 'Ad Set Name',
-            dataType: 'STRING',
-            semantics: {
-              conceptType: 'DIMENSION'
-            }
-          });
-          break;
-        case 'ad_name':
-          fields.push({
-            name: 'ad_name',
-            label: 'Ad Name',
-            dataType: 'STRING',
-            semantics: {
-              conceptType: 'DIMENSION'
-            }
-          });
-          break;
-        case 'age':
-          fields.push({
-            name: 'age',
-            label: 'Age',
-            dataType: 'STRING',
-            semantics: {
-              conceptType: 'DIMENSION'
-            }
-          });
-          break;
-        case 'gender':
-          fields.push({
-            name: 'gender',
-            label: 'Gender',
-            dataType: 'STRING',
-            semantics: {
-              conceptType: 'DIMENSION'
-            }
-          });
-          break;
-        case 'country':
-          fields.push({
-            name: 'country',
-            label: 'Country',
-            dataType: 'STRING',
-            semantics: {
-              conceptType: 'DIMENSION',
-              semanticType: 'COUNTRY'
-            }
-          });
-          break;
-        case 'device_platform':
-          fields.push({
-            name: 'device_platform',
-            label: 'Device Platform',
-            dataType: 'STRING',
-            semantics: {
-              conceptType: 'DIMENSION'
-            }
-          });
-          break;
-      }
-    });
-  }
+  // Always include Campaign Name dimension
+  fields.push({
+    name: 'campaign_name',
+    label: 'Campaign Name',
+    dataType: 'STRING',
+    semantics: {
+      conceptType: 'DIMENSION'
+    }
+  });
   
-  // Add selected metrics
-  if (configParams.metrics) {
-    var metrics = configParams.metrics.split(',');
-    
-    metrics.forEach(function(metric) {
-      switch(metric) {
-        case 'spend':
-          fields.push({
-            name: 'spend',
-            label: 'Spend (Cost)',
-            dataType: 'NUMBER',
-            semantics: {
-              conceptType: 'METRIC'
-            }
-          });
-          break;
-        case 'conversion_value_total':
-          fields.push({
-            name: 'conversion_value_total',
-            label: 'Total Conversion Value',
-            dataType: 'NUMBER',
-            semantics: {
-              conceptType: 'METRIC'
-            }
-          });
-          break;
-        case 'impressions':
-          fields.push({
-            name: 'impressions',
-            label: 'Impressions',
-            dataType: 'NUMBER',
-            semantics: {
-              conceptType: 'METRIC'
-            }
-          });
-          break;
-        case 'clicks':
-          fields.push({
-            name: 'clicks',
-            label: 'Clicks',
-            dataType: 'NUMBER',
-            semantics: {
-              conceptType: 'METRIC'
-            }
-          });
-          break;
-        case 'cpc':
-          fields.push({
-            name: 'cpc',
-            label: 'Cost per Click',
-            dataType: 'NUMBER',
-            semantics: {
-              conceptType: 'METRIC'
-            }
-          });
-          break;
-        case 'cpm':
-          fields.push({
-            name: 'cpm',
-            label: 'Cost per 1,000 Impressions',
-            dataType: 'NUMBER',
-            semantics: {
-              conceptType: 'METRIC'
-            }
-          });
-          break;
-        case 'ctr':
-          fields.push({
-            name: 'ctr',
-            label: 'Click-Through Rate',
-            dataType: 'NUMBER',
-            semantics: {
-              conceptType: 'METRIC',
-              semanticType: 'PERCENT'
-            }
-          });
-          break;
-        case 'reach':
-          fields.push({
-            name: 'reach',
-            label: 'Reach',
-            dataType: 'NUMBER',
-            semantics: {
-              conceptType: 'METRIC'
-            }
-          });
-          break;
-        case 'frequency':
-          fields.push({
-            name: 'frequency',
-            label: 'Frequency',
-            dataType: 'NUMBER',
-            semantics: {
-              conceptType: 'METRIC'
-            }
-          });
-          break;
-        case 'actions':
-          fields.push({
-            name: 'actions',
-            label: 'Actions (Conversions)',
-            dataType: 'NUMBER',
-            semantics: {
-              conceptType: 'METRIC'
-            }
-          });
-          break;
-      }
-    });
-  }
+  // Always include Spend metric
+  fields.push({
+    name: 'spend',
+    label: 'Spend (Cost)',
+    dataType: 'NUMBER',
+    semantics: {
+      conceptType: 'METRIC' // CURRENCY_USD was previously removed, keeping it that way
+    }
+  });
+  
+  // Always include Total Conversion Value metric
+  fields.push({
+    name: 'conversion_value_total',
+    label: 'Total Conversion Value',
+    dataType: 'NUMBER',
+    semantics: {
+      conceptType: 'METRIC' // CURRENCY_USD was previously removed, keeping it that way
+    }
+  });
 
-  Logger.log(fields);
+  // Logic for dynamically adding dimensions and metrics based on configParams is removed.
+  
+  Logger.log('Fixed schema fields: ' + JSON.stringify(fields));
   
   return { schema: fields };
 }
@@ -1013,13 +824,7 @@ function validateConfig(request) {
      });
   }
 
-  // Validate Metrics
-  if (!configParams.metrics || configParams.metrics.split(',').length === 0) {
-    errors.push({
-      errorCode: 'MISSING_METRICS',
-      message: "At least one metric must be selected."
-    });
-  }
+  // Metrics validation is removed as metrics are now fixed.
 
   // Add more validation as needed (e.g., date range type)
 
