@@ -36,7 +36,7 @@ function getConfig(request) {
       {
         type: 'INFO',
         name: 'connect',
-        text: 'This connector allows you to import Meta Ads data for Spend, Total Conversion Value, and Campaign Name into Looker Studio. Enter your Ad Account ID below.'
+        text: 'This connector allows you to import Meta Ads data for Spend, Total Conversion Value, Campaign Name, Impressions, Clicks, and Sessions (from Reach) into Looker Studio. Enter your Ad Account ID below.'
       },
       {
         type: 'TEXTINPUT',
@@ -101,6 +101,46 @@ function getSchema(request) {
       conceptType: 'METRIC' // CURRENCY_USD was previously removed, keeping it that way
     }
   });
+  
+  // Always include Impressions metric
+  fields.push({
+    name: 'impressions',
+    label: 'Impressions',
+    dataType: 'NUMBER',
+    semantics: {
+      conceptType: 'METRIC'
+    }
+  });
+  
+  // Always include Clicks metric
+  fields.push({
+    name: 'clicks',
+    label: 'Clicks',
+    dataType: 'NUMBER',
+    semantics: {
+      conceptType: 'METRIC'
+    }
+  });
+  
+  // Always include Sessions metric (using reach as proxy since Meta doesn't have direct sessions)
+  fields.push({
+    name: 'reach',
+    label: 'Sessions (Reach)',
+    dataType: 'NUMBER',
+    semantics: {
+      conceptType: 'METRIC'
+    }
+  });
+
+  // Website Purchase Count
+  fields.push({
+    name: 'website_purchases',
+    label: 'Website Purchases',
+    dataType: 'NUMBER',
+    semantics: {
+      conceptType: 'METRIC'
+    }
+  });
 
   // Logic for dynamically adding dimensions and metrics based on configParams is removed.
   
@@ -157,7 +197,7 @@ function getData(request) {
     Logger.log('API fields: ' + JSON.stringify(apiFields));
 
     // Handle action_breakdowns for conversion metrics
-    var hasConversionMetrics = hasMetrics(requestedFields, ['conversion_value_total', 'actions']);
+    var hasConversionMetrics = hasMetrics(requestedFields, ['conversion_value_total', 'actions', 'website_purchases']);
     Logger.log('Has conversion metrics: ' + hasConversionMetrics);
 
     // Build breakdowns parameter
@@ -175,7 +215,7 @@ function getData(request) {
       var conflictingList = requestedBreakdowns.filter(function(b) { return conflictingBreakdowns.indexOf(b) !== -1; }).join(', ');
       Logger.log('Validation Error: Conflicting breakdowns (' + conflictingList + ') requested with conversion metrics.');
       cc.newUserError()
-        .setText('Invalid Configuration: Conversion metrics (like Total Conversion Value, Actions) cannot be combined with breakdowns like Age, Gender, Country, or Device Platform due to Meta API limitations. Please remove either the conversion metrics or these specific breakdowns.')
+        .setText('Invalid Configuration: Conversion metrics (like Total Conversion Value, Actions, Website Purchases) cannot be combined with breakdowns like Age, Gender, Country, or Device Platform due to Meta API limitations. Please remove either the conversion metrics or these specific breakdowns.')
         .setDebugText('Conflict between action_breakdowns (implied by conversion metrics) and requested breakdowns: ' + conflictingList)
         .throwException();
     }
@@ -304,6 +344,24 @@ function getRequestedFields(request) {
 }
 
 /**
+ * Extracts website purchase count from actions array
+ * @param {Array<object>} actionsList Array of action objects
+ * @return {number} The total website purchase count
+ */
+function extractWebsitePurchases(actionsList) {
+  if (!actionsList || !Array.isArray(actionsList)) return 0;
+  var totalPurchases = 0;
+  actionsList.forEach(function(action) {
+    // Look for various purchase action types
+    if (action.action_type === 'purchase' || 
+        action.action_type === 'offsite_conversion.fb_pixel_purchase') {
+      totalPurchases += parseInt(action.value) || 0;
+    }
+  });
+  return totalPurchases;
+}
+
+/**
  * Gets the date range based on the selected type or Looker Studio request.
  * @param {string} dateRangeType The date range type from config
  * @param {object} request The getData request object containing potential dateRange
@@ -399,6 +457,9 @@ function constructApiFields(requestedFields) {
         fields.push('action_values');
         actionFields.push('action_values');
       } else if (field.name === 'actions') {
+        fields.push('actions');
+        actionFields.push('actions');
+      } else if (field.name === 'website_purchases') {
         fields.push('actions');
         actionFields.push('actions');
       } else if (field.name !== 'roas') {
@@ -649,6 +710,9 @@ function processResponse(response, requestedFields) {
           break;
         case 'actions':
           value = extractPurchaseActionCount(item.actions);
+          break;
+        case 'website_purchases':
+          value = extractWebsitePurchases(item.actions);
           break;
 
         // Calculated metrics for this item (daily record)
